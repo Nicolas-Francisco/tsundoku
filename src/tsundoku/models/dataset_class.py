@@ -1,4 +1,5 @@
 from transformers import AutoTokenizer, AutoModelForMaskedLM
+from sklearn.preprocessing import LabelEncoder
 import torch
 from torch.utils.data import Dataset
 
@@ -12,22 +13,24 @@ class TsundokuUsersDataset(Dataset):
     def __init__(
         self,
         descriptions,
-        location,
-        name,
-        screen_name,
-        url,
+        locations,
+        names,
+        screen_names,
+        urls,
         labels,
         tokenizer,
         max_len=200,
     ):
         self.descriptions = descriptions
-        self.location = location
-        self.name = name
-        self.screen_name = screen_name
-        self.url = url
+        self.locations = locations
+        self.names = names
+        self.screen_names = screen_names
+        self.urls = urls
         self.labels = labels
         self.tokenizer = tokenizer
         self.max_len = max_len
+        self.label_encoder = LabelEncoder()
+        self.label_encoder.fit(self.labels)
 
     def __len__(self):
         return len(self.descriptions)
@@ -46,12 +49,12 @@ class TsundokuUsersDataset(Dataset):
 
     def __getitem__(self, item):
         descriptions = str(self.descriptions[item])
-        label = self.labels[item]
+        label_encoded = self.label_encoder.transform([self.labels[item]])[0]
         encoding = self.encode(descriptions)
 
         return {
             "description": descriptions,
             "input_ids": encoding["input_ids"].flatten(),
             "attention_mask": encoding["attention_mask"].flatten(),
-            "label": torch.tensor(label, dtype=torch.long),
+            "label": torch.tensor(label_encoded, dtype=torch.long),
         }

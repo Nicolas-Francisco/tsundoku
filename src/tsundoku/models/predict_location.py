@@ -21,6 +21,7 @@ from tsundoku.models.transformer_pipeline import (
     execute_transformer_pipeline,
     data_loader,
 )
+from tsundoku.models.pipeline import search_tokens
 from tsundoku.models.dataset_class import BETOTokenizer, BETOModel
 from tsundoku.utils.timer import Timer
 
@@ -100,43 +101,91 @@ def main(experiment, group):
     )
     logging.info(f"Total users: #{len(user_ids)}")
 
+    labels = pd.DataFrame(
+        0, index=user_ids.index, columns=group_config.keys(), dtype=int
+    )
+
     user_data_path = processed_path / "user.unique.parquet"
 
-    user_data = dd.read_parquet(user_data_path).set_index("user.id").compute()
-
-    # xgb_parameters = experiment_config["location"]["xgb"]
-    # pipeline_config = experiment_config["location"]["pipeline"]
-
-    user_data = user_data
+    df = dd.read_parquet(user_data_path).set_index("user.id").compute()
     columnas_deseadas = [
         "user.description",
         "user.name",
         "user.screen_name",
         "user.url",
+        "user.location",
     ]
 
     # Filtrar el DataFrame para mantener solo las columnas deseadas
-    user_data_filtrado = user_data.loc[:, columnas_deseadas]
+    user_data_filtrado = df.loc[:, columnas_deseadas]
     mapeo_nombres = {
         "user.id": "id",
         "user.description": "description",
         "user.name": "name",
         "user.screen_name": "screen_name",
         "user.url": "url",
+        "user.location": "location",
     }
 
-    # Cambiar los nombres de las columnas
-    df = user_data_filtrado.rename(columns=mapeo_nombres)
+    user_data = user_data_filtrado.rename(columns=mapeo_nombres)
+    user_data["label"] = ""
 
-    print(df)
-    return
+    for key, meta in group_config.items():
+        group_re = None
+        try:
+            # print(f'location patterns for {key}, {meta["location"]["patterns"]}')
+            group_re = re.compile("|".join(meta["location"]["patterns"]), re.IGNORECASE)
+        except KeyError:
+            # print(f"no location patterns in {key}")
+            continue
+
+        user_data["location"] = user_data["location"].fillna("").map(deaccent)
+        # asignamos label a todos quienes tengan un location acorde a los datos del .toml
+        user_data.loc[user_data["location"].str.contains(group_re), "label"] = key
+        group_ids = user_data[user_data["location"].str.contains(group_re)].index
+
+        if group == "location":
+            # use these as account ids that cannot be modified (let's trust users)
+            if not "account_ids" in meta:
+                meta["account_ids"] = dict()
+
+            if not "known_users" in meta:
+                meta["account_ids"]["known_users"] = list(group_ids)
+            else:
+                meta["account_ids"]["known_users"].extend(group_ids)
+        else:
+            # use them as labels
+            labels[key].loc[group_ids] = 1
+
+    # xgb_parameters = experiment_config["location"]["xgb"]
+    # pipeline_config = experiment_config["location"]["pipeline"]
+
+    df = user_data
+
+    # print(f"df shape: {df.shape}")
+
+    # training_df = df[df["location"] != ""]
+
+    # print(f"training_df shape: {training_df.shape}")
+
+    # training_df = df[df["label"] != ""]
+
+    # print(f"training_df_labeled shape: {training_df.shape}")
+
+    # print(training_df.head(5))
+
+    # unique_values = df["label"].unique()
+
+    # print(unique_values)
 
     MAX_LEN = 200
-    BATCH_SIZE = 50
+    BATCH_SIZE = 20
+
+    training_df = df[df["label"] != ""]
 
     df_train, df_validation, df_test = np.split(
-        df.sample(frac=1),
-        [int(0.7 * len(df)), int(0.8 * len(df))],
+        training_df.sample(frac=1),
+        [int(0.7 * len(training_df)), int(0.8 * len(training_df))],
     )
 
     train_data_loader = data_loader(df_train, BETOTokenizer, MAX_LEN, BATCH_SIZE)
@@ -152,6 +201,8 @@ def main(experiment, group):
     execute_transformer_pipeline(
         train_data_loader, df_train, validation_data_loader, df_validation
     )
+
+    return
 
     # clf, predictions, feature_names_all, top_terms, X = classifier_pipeline(
     #     processed_path,

@@ -10,7 +10,7 @@ from tsundoku.models.dataset_class import TsundokuUsersDataset
 
 
 EPOCHS = 3
-NCLASSES = 2
+NCLASSES = 17
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = BETOTweeterClassifier(NCLASSES)
@@ -20,7 +20,11 @@ loss_fn = nn.CrossEntropyLoss().to(device)
 
 def data_loader(df, tokenizer, max_len, batch_size):
     dataset = TsundokuUsersDataset(
-        descriptions=df.text.to_numpy(),
+        descriptions=df.description.to_numpy(),
+        locations=df.location.to_numpy(),
+        names=df.name.to_numpy(),
+        screen_names=df.screen_name.to_numpy(),
+        urls=df.url.to_numpy(),
         labels=df.label.to_numpy(),
         tokenizer=tokenizer,
         max_len=max_len,
@@ -42,6 +46,7 @@ def train_model(model, data_loader, loss_fn, optimizer, device, scheduler, n_exa
         loss = loss_fn(outputs, labels)
         correct_predictions += torch.sum(preds == labels)
         losses.append(loss.item())
+        optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
@@ -108,10 +113,10 @@ def execute_transformer_pipeline(
             scheduler,
             len(df_train),
         )
+        print("Entrenamiento: Loss: {}, accuracy: {}".format(train_loss, train_acc))
         validation_acc, validation_loss = eval_model(
             model, validation_data_loader, loss_fn, device, len(df_validation)
         )
-        print("Entrenamiento: Loss: {}, accuracy: {}".format(train_loss, train_acc))
         print(
             "Validación: Loss: {}, accuracy: {}".format(validation_loss, validation_acc)
         )
