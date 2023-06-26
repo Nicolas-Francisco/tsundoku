@@ -144,6 +144,7 @@ def main(experiment, overwrite):
 
     t.start()
     count_user_tweets(data_paths, processed_path, overwrite=overwrite)
+    group_user_tweets_list(data_paths, processed_path, overwrite=overwrite)
     group_users(
         data_paths,
         processed_path,
@@ -297,6 +298,26 @@ def count_user_tweets(data_paths, destination_path, overwrite=False):
 
     write_parquet(tweet_dd, count_target)
     logging.info(f"user tweet counts -> {count_target}")
+
+
+def group_user_tweets_list(data_paths, destination_path, overwrite=False):
+    list_target = destination_path / "user.tweets_list.parquet"
+
+    if not overwrite and list_target.exists():
+        logging.info("tweets lists by user were computed! skipping.")
+        return
+
+    tweets_list = (
+        dd_from_parquet_paths([d / "tweets_list_per_user.parquet" for d in data_paths])
+        .groupby("user.id")
+        .agg({"text": sum})
+        .sort_values(by="user.id")
+        .reset_index()
+        .compute()
+    )
+
+    write_parquet(tweets_list, list_target)
+    logging.info(f"user tweet lists -> {list_target}")
 
 
 def group_users(
