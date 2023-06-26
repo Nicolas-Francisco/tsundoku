@@ -1,11 +1,7 @@
 from transformers import BertTokenizer, BertModel
 import torch
-from torch import nn, optim
-from torch.utils.data import Dataset, DataLoader
-
-PRE_TRAINED_MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
-BETOTokenizer = BertTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
-BETOModel = BertModel.from_pretrained(PRE_TRAINED_MODEL_NAME)
+from torch import nn
+from tsundoku.models.dataset_class import BETOTokenizer, BETOModel
 
 
 class BETOTweeterClassifier(nn.Module):
@@ -17,7 +13,6 @@ class BETOTweeterClassifier(nn.Module):
 
     def forward(self, input_ids, attention_mask):
         output = self.beto(input_ids=input_ids, attention_mask=attention_mask)
-        print(output)
         cls_output = output.pooler_output
         drop_output = self.drop(cls_output)
         output = self.linear(drop_output)

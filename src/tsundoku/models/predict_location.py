@@ -10,8 +10,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import toml
 
+from scipy.sparse import csr_matrix, hstack, load_npz, save_npz
 from glob import glob
 from multiprocessing.pool import ThreadPool
+from sklearn.preprocessing import LabelEncoder
 from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
 from gensim.utils import deaccent
@@ -157,30 +159,10 @@ def main(experiment, group):
             # use them as labels
             labels[key].loc[group_ids] = 1
 
-    # xgb_parameters = experiment_config["location"]["xgb"]
-    # pipeline_config = experiment_config["location"]["pipeline"]
-
     df = user_data
-
-    # print(f"df shape: {df.shape}")
-
-    # training_df = df[df["location"] != ""]
-
-    # print(f"training_df shape: {training_df.shape}")
-
-    # training_df = df[df["label"] != ""]
-
-    # print(f"training_df_labeled shape: {training_df.shape}")
-
-    # print(training_df.head(5))
-
-    # unique_values = df["label"].unique()
-
-    # print(unique_values)
 
     MAX_LEN = 200
     BATCH_SIZE = 20
-
     training_df = df[df["label"] != ""]
 
     df_train, df_validation, df_test = np.split(
@@ -188,40 +170,39 @@ def main(experiment, group):
         [int(0.7 * len(training_df)), int(0.8 * len(training_df))],
     )
 
-    train_data_loader = data_loader(df_train, BETOTokenizer, MAX_LEN, BATCH_SIZE)
-    validation_data_loader = data_loader(
-        df_validation, BETOTokenizer, MAX_LEN, BATCH_SIZE
+    label_encoder = LabelEncoder()
+    label_list = list(group_config.keys())
+    label_encoder.fit(label_list)
+
+    train_data_loader = data_loader(
+        df_train, BETOTokenizer, label_encoder, MAX_LEN, BATCH_SIZE
     )
-    test_data_loader = data_loader(df_test, BETOTokenizer, MAX_LEN, BATCH_SIZE)
+    validation_data_loader = data_loader(
+        df_validation, BETOTokenizer, label_encoder, MAX_LEN, BATCH_SIZE
+    )
+    test_data_loader = data_loader(
+        df_test, BETOTokenizer, label_encoder, MAX_LEN, BATCH_SIZE
+    )
+
+    output_dir = processed_path / "location_model_BETO"
 
     t = Timer()
     chronometer = []
     t.start()
 
-    execute_transformer_pipeline(
-        train_data_loader, df_train, validation_data_loader, df_validation
-    )
-
-    return
-
-    # clf, predictions, feature_names_all, top_terms, X = classifier_pipeline(
-    #     processed_path,
-    #     group_config,
-    #     user_ids,
-    #     labels,
-    #     xgb_parameters,
-    #     allowed_user_ids=allow_list_ids,
-    #     allowed_users_class=allow_id_class,
-    #     early_stopping_rounds=pipeline_config["early_stopping_rounds"],
-    #     eval_fraction=pipeline_config["eval_fraction"],
-    #     threshold_offset_factor=pipeline_config["threshold_offset_factor"],
-    #     skip_numeric_tokens=skip_numeric_tokens,
+    # execute_transformer_pipeline(
+    #     train_data_loader, df_train, validation_data_loader, df_validation, output_dir
     # )
 
-    current_timer = t.stop()
+    docterm_matrix = load_npz(processed_path / "user.description_tokens.matrix.npz")
+    print(docterm_matrix)
 
+    current_timer = t.stop()
+    chronometer.append(current_timer)
     logger.info("Chronometer: " + str(chronometer))
     logger.info("Chronometer process name: location clasification with transformers")
+
+    return
 
 
 if __name__ == "__main__":

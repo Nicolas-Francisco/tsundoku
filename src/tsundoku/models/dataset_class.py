@@ -1,12 +1,11 @@
-from transformers import AutoTokenizer, AutoModelForMaskedLM
-from sklearn.preprocessing import LabelEncoder
+from transformers import BertTokenizer, BertModel
 import torch
 from torch.utils.data import Dataset
 
 
 PRE_TRAINED_MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
-BETOTokenizer = AutoTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
-BETOModel = AutoModelForMaskedLM.from_pretrained(PRE_TRAINED_MODEL_NAME)
+BETOTokenizer = BertTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
+BETOModel = BertModel.from_pretrained(PRE_TRAINED_MODEL_NAME)
 
 
 class TsundokuUsersDataset(Dataset):
@@ -17,8 +16,11 @@ class TsundokuUsersDataset(Dataset):
         names,
         screen_names,
         urls,
+        tweets,
+        retweets,
         labels,
         tokenizer,
+        label_encoder,
         max_len=200,
     ):
         self.descriptions = descriptions
@@ -26,11 +28,12 @@ class TsundokuUsersDataset(Dataset):
         self.names = names
         self.screen_names = screen_names
         self.urls = urls
+        self.tweets = tweets
+        self.retweets = retweets
         self.labels = labels
         self.tokenizer = tokenizer
         self.max_len = max_len
-        self.label_encoder = LabelEncoder()
-        self.label_encoder.fit(self.labels)
+        self.label_encoder = label_encoder
 
     def __len__(self):
         return len(self.descriptions)

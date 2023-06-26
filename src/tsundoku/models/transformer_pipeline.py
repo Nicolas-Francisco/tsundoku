@@ -5,7 +5,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from textwrap import wrap
 
-from tsundoku.models.transformer import BETOTweeterClassifier
+from tsundoku.models.transformer import BETOTweeterClassifier, BETOTokenizer, BETOModel
 from tsundoku.models.dataset_class import TsundokuUsersDataset
 
 
@@ -18,7 +18,7 @@ optimizer = AdamW(model.parameters(), lr=2e-5, correct_bias=False)
 loss_fn = nn.CrossEntropyLoss().to(device)
 
 
-def data_loader(df, tokenizer, max_len, batch_size):
+def data_loader(df, tokenizer, label_encoder, max_len, batch_size):
     dataset = TsundokuUsersDataset(
         descriptions=df.description.to_numpy(),
         locations=df.location.to_numpy(),
@@ -27,6 +27,7 @@ def data_loader(df, tokenizer, max_len, batch_size):
         urls=df.url.to_numpy(),
         labels=df.label.to_numpy(),
         tokenizer=tokenizer,
+        label_encoder=label_encoder,
         max_len=max_len,
     )
 
@@ -37,7 +38,9 @@ def train_model(model, data_loader, loss_fn, optimizer, device, scheduler, n_exa
     model = model.train()
     losses = []
     correct_predictions = 0
+    index = 1
     for batch in data_loader:
+        print(f"current batch: n°{index}")
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)
         labels = batch["label"].to(device)
@@ -46,12 +49,12 @@ def train_model(model, data_loader, loss_fn, optimizer, device, scheduler, n_exa
         loss = loss_fn(outputs, labels)
         correct_predictions += torch.sum(preds == labels)
         losses.append(loss.item())
-        optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         scheduler.step()
         optimizer.zero_grad()
+        index += 1
     return correct_predictions.double() / n_examples, np.mean(losses)
 
 
@@ -94,7 +97,7 @@ def classifyDescription(text, tokenizer, MAX_LEN=200):
 
 
 def execute_transformer_pipeline(
-    train_data_loader, df_train, validation_data_loader, df_validation
+    train_data_loader, df_train, validation_data_loader, df_validation, output_dir
 ):
     total_steps = len(train_data_loader) * EPOCHS
     scheduler = get_linear_schedule_with_warmup(
@@ -121,4 +124,6 @@ def execute_transformer_pipeline(
             "Validación: Loss: {}, accuracy: {}".format(validation_loss, validation_acc)
         )
         print("")
+    model.beto.save_pretrained(output_dir)
+    BETOTokenizer.save_pretrained(output_dir)
     return
